@@ -334,6 +334,125 @@ def analyse_false_negative_entropy(predictions, y_test, y_pred, num_classes=6):
     return class_H_avg, class_Ep_avg, class_H_Ep_avg
 
 
+def collect_uncertainty_by_case(predictions, y_test, y_pred, num_classes=6, uncertainty_type="predictive"):
+    """
+    Recopila los valores de incertidumbre para falsos negativos, falsos positivos y aciertos.
+
+    Parameters
+    ----------
+    predictions : ndarray
+        Array con las predicciones bayesianas.
+    y_test : ndarray
+        Etiquetas verdaderas del conjunto de prueba.
+    y_pred : ndarray
+        Etiquetas predichas por el modelo.
+    num_classes : int, opcional
+        Número total de clases (default: 6).
+    uncertainty_type : str, opcional
+        Tipo de incertidumbre que se recopilará ("predictive", "aleatoric" o "epistemic").
+
+    Returns
+    -------
+    uncertainty_by_case : dict
+        Diccionario con listas de incertidumbre para cada caso:
+        - "false_negatives": Falsos negativos (predijo 0, etiqueta verdadera > 0).
+        - "false_positives": Falsos positivos (predijo > 0, etiqueta verdadera 0).
+        - "correct_predictions": Aciertos.
+        Cada entrada contiene un diccionario con listas de incertidumbre por clase.
+    """
+
+    # Calcular las incertidumbres predictiva, aleatoria y epistémica
+    model_H = _predictive_entropy(predictions)
+    model_Ep = _expected_entropy(predictions)
+    model_H_Ep = model_H - model_Ep
+
+    # Elegir el tipo de incertidumbre
+    if uncertainty_type == "predictive":
+        uncertainty_values = model_H
+    elif uncertainty_type == "aleatoric":
+        uncertainty_values = model_Ep
+    elif uncertainty_type == "epistemic":
+        uncertainty_values = model_H_Ep
+    else:
+        raise ValueError("El tipo de incertidumbre debe ser 'predictive', 'aleatoric' o 'epistemic'")
+
+    # Diccionario para almacenar incertidumbre de cada caso y clase
+    uncertainty_by_case = {
+        "false_negatives": {i: [] for i in range(1, num_classes)},  # Falsos negativos excluyen la clase 0
+        "false_positives": {i: [] for i in range(1, num_classes)},  # Falsos positivos excluyen la clase 0
+        "correct_predictions": {i: [] for i in range(num_classes)}  # Aciertos incluyen todas las clases
+    }
+
+    # Recopilar incertidumbre por caso
+    for uncertainty, true_label, pred_label in zip(uncertainty_values, y_test, y_pred):
+        true_label = int(true_label)
+        pred_label = int(pred_label)
+
+        # Falsos negativos: el modelo predice 0 y la clase real es diferente de 0
+        if pred_label == 0 and true_label != 0:
+            uncertainty_by_case["false_negatives"][true_label].append(uncertainty)
+
+        # Falsos positivos: el modelo predice una clase mayor a 0, pero la etiqueta es 0
+        elif pred_label != 0 and true_label == 0:
+            uncertainty_by_case["false_positives"][pred_label].append(uncertainty)
+
+        # Aciertos: predicción correcta
+        elif pred_label == true_label:
+            uncertainty_by_case["correct_predictions"][true_label].append(uncertainty)
+
+    return uncertainty_by_case
+
+
+def analyze_correct_predictions_loss(uncertainty_by_class_correct, uncertainty_threshold=0.5):
+    """
+    Analiza cuántos aciertos se perderían si eliminamos los que tienen alta incertidumbre.
+
+    Parameters
+    ----------
+    uncertainty_by_class_correct : dict
+        Diccionario que contiene listas de incertidumbre para cada clase de los aciertos.
+    uncertainty_threshold : float, opcional
+        Umbral de incertidumbre por encima del cual se considera incierta la predicción (default: 0.5).
+
+    Returns
+    -------
+    loss_summary : dict
+        Diccionario con el porcentaje de aciertos que se perderían para cada clase y globalmente.
+    """
+
+    loss_summary = {}
+    total_correct_predictions = 0
+    total_high_uncertainty = 0
+
+    for label, uncertainties in uncertainty_by_class_correct.items():
+        if uncertainties:  # Si hay datos para esta clase
+            # Total de aciertos en la clase
+            total_class_correct = len(uncertainties)
+            # Número de aciertos con incertidumbre por encima del umbral
+            high_uncertainty_class = sum(1 for u in uncertainties if u > uncertainty_threshold)
+
+            # Calcula el porcentaje de aciertos que se perderían en esta clase
+            class_loss_percentage = (high_uncertainty_class / total_class_correct) * 100
+            loss_summary[label] = class_loss_percentage
+
+            # Acumula en el total global
+            total_correct_predictions += total_class_correct
+            total_high_uncertainty += high_uncertainty_class
+
+    # Porcentaje global de pérdida de aciertos
+    global_loss_percentage = (total_high_uncertainty / total_correct_predictions) * 100
+    loss_summary['global'] = global_loss_percentage
+
+    print(f"Pérdida de aciertos por alta incertidumbre threshole={uncertainty_threshold}:")
+    for label, loss_percentage in loss_summary.items():
+        if label == 'global':
+            print(f"Pérdida Global: {loss_percentage:.2f}%")
+        else:
+            print(f"Clase {label}: {loss_percentage:.2f}%")
+
+    return loss_summary
+
+
 def map_prediction(predictions):
     """Returns the bayesian predictions and global uncertainties (H)
     

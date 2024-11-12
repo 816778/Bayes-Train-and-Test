@@ -13,7 +13,6 @@ class BayesianENet(nn.Module):
             self.fc1 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=in_features, out_features=16)
             self.fc2 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=16, out_features=8)
             self.fc3 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=8, out_features=output_dim)
-            self.sigmoid = nn.Sigmoid()
 
         elif self.model_num == 1:
             self.bayesian_fc = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=in_features,
@@ -35,7 +34,7 @@ class BayesianENet(nn.Module):
         if self.model_num == 0:
             x = torch.relu(self.fc1(x))
             x = torch.relu(self.fc2(x))
-            x = self.sigmoid(self.fc3(x))
+            x = self.fc3(x)
         elif self.model_num == 1:
             x = self.bayesian_fc(x)
         elif self.model_num == 2:
@@ -51,11 +50,8 @@ class BayesianENet(nn.Module):
     def setup_optimizer_and_criterion(self, learning_rate):
         # Configuración del optimizador
         optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-
-        if self.model_num in [1, 2, 3]:
-            criterion = nn.BCEWithLogitsLoss()
-        else:
-            criterion = nn.CrossEntropyLoss()
+        criterion = nn.BCEWithLogitsLoss()
+        # criterion = nn.CrossEntropyLoss()
         # loss_fn = torch.nn.CrossEntropyLoss()  # Función de pérdida
         loss_fn = nn.MSELoss()
 

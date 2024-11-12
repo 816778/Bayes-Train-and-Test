@@ -18,19 +18,17 @@ import os
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from matplotlib.backends.backend_pdf import PdfPages
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
 # Local imports
 from .HSI2RGB import HSI2RGB
 
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
-
 
 def plot_confusion_matrix(y_true, y_pred, classes, output_dir, name, normalize=True):
     """
-    Plots the confusion matrix and saves it as an image.
+    Plots the confusion matrix and saves it as an image. Additionally, saves
+    another confusion matrix with raw counts (non-normalized).
 
     Parameters
     ----------
@@ -55,19 +53,123 @@ def plot_confusion_matrix(y_true, y_pred, classes, output_dir, name, normalize=T
     # Calcular la matriz de confusión
     cm = confusion_matrix(y_true, y_pred, labels=unique_classes)
 
-    # Normalizar si es necesario
+    # Guardar la matriz de confusión con números reales (sin normalización)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=adjusted_classes)
+    disp.plot(cmap=plt.cm.Blues, values_format="d")
+    plt.title(f"{name} - Confusion Matrix (Counts)")
+    real_count_path = os.path.join(output_dir, f"{name}_confusion_matrix_counts.png")
+    plt.savefig(real_count_path)
+    print(f"Saved raw count confusion matrix at {real_count_path}")
+    plt.close()
+
+    # Normalizar la matriz de confusión si es necesario
     if normalize:
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
 
+    # Graficar y guardar la matriz de confusión normalizada
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=adjusted_classes)
     disp.plot(cmap=plt.cm.Blues, values_format=".2f" if normalize else "d")
-
-    plt.title(f"{name} - Confusion Matrix")
-    plt.savefig(os.path.join(output_dir, f"{name}_confusion_matrix.png"))
+    plt.title(f"{name} - Confusion Matrix (Normalized)")
+    normalized_path = os.path.join(output_dir, f"{name}_confusion_matrix_normalized.png")
+    plt.savefig(normalized_path)
+    print(f"Saved normalized confusion matrix at {normalized_path}")
     plt.show()
+    plt.close()
 
     accuracy = (y_true == y_pred).astype(float).mean() * 100
     print(f"Accuracy: {accuracy.item():.2f}%")
+
+
+def plot_uncertainty_distribution(uncertainty_by_class, output_dir, num_bins=10, uncertainty_type="Predictiva",
+                                  error_type="falsos negativos"):
+    """
+    Grafica la distribución de incertidumbre para cada clase basada en los datos recopilados de errores (falsos positivos o falsos negativos).
+
+    Parameters
+    ----------
+    uncertainty_by_class : dict
+        Diccionario con listas de incertidumbre para cada clase en los errores especificados (falsos positivos o falsos negativos).
+    output_dir : str
+        Directorio para guardar el archivo PDF.
+    num_bins : int, opcional
+        Número de intervalos para el histograma (default: 10).
+    uncertainty_type : str, opcional
+        Tipo de incertidumbre que se grafica (Predictiva, Aleatoria, Epistémica).
+    error_type : str, opcional
+        Tipo de error a graficar ("falsos positivos" o "falsos negativos").
+    """
+    # Nombre del archivo PDF basado en el tipo de error
+    pdf_file_path = os.path.join(output_dir, f"{error_type}_uncertainty_distribution.pdf")
+
+    # Graficar la distribución de incertidumbre para cada clase
+    with PdfPages(pdf_file_path) as pdf:
+        for label, uncertainties in uncertainty_by_class.items():
+            if uncertainties:  # Solo graficar si hay datos
+                plt.figure()
+                plt.hist(uncertainties, bins=num_bins, alpha=0.5, range=(0, 1))
+                plt.xlabel("Incertidumbre")
+                plt.ylabel("Cantidad de casos")
+                plt.title(
+                    f"Distribución de Incertidumbre {uncertainty_type} para {error_type.capitalize()} de Clase {label}")
+
+                # Añadir la figura actual al archivo PDF
+                pdf.savefig()  # Guarda la figura actual en el PDF
+                plt.close()  # Cierra la figura para liberar memoria y evitar solapamientos
+
+    print(f"Todas las distribuciones de incertidumbre guardadas en un único archivo PDF: {pdf_file_path}")
+
+
+import matplotlib.pyplot as plt
+
+
+def plot_accuracy_loss_by_uncertainty(loss_summary, uncertainty_threshold, output_dir):
+    """
+    Genera un gráfico de barras para mostrar la pérdida de aciertos por alta incertidumbre para cada clase y globalmente.
+
+    Parameters
+    ----------
+    loss_summary : dict
+        Diccionario con el porcentaje de aciertos que se perderían para cada clase y globalmente.
+    uncertainty_threshold : float
+        Umbral de incertidumbre considerado.
+    """
+
+    # Extraer clases y valores de pérdida
+    labels = list(map(str, loss_summary.keys()))
+    loss_percentages = list(loss_summary.values())
+
+    # Configurar el gráfico
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(labels, loss_percentages, color='skyblue', edgecolor='black')
+
+    # Añadir una línea de referencia del umbral de incertidumbre
+    plt.axhline(y=uncertainty_threshold * 100, color='red', linestyle='--',
+                label=f'Umbral de incertidumbre ({uncertainty_threshold * 100:.0f}%)')
+
+    # Etiquetas de los ejes y título
+    plt.xlabel('Clase', fontsize=12)
+    plt.ylabel('% Pérdida de Aciertos por Alta Incertidumbre', fontsize=12)
+    plt.title(f'Pérdida de Aciertos al Descartar Predicciones con Incertidumbre > {uncertainty_threshold}', fontsize=14)
+
+    # Añadir etiquetas en las barras
+    for bar, loss in zip(bars, loss_percentages):
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2, yval + 0.5, f'{loss:.2f}%', ha='center', va='bottom', fontsize=10)
+
+    # Añadir leyenda
+    plt.legend()
+
+    # Mostrar o guardar el gráfico
+    plt.tight_layout()
+    plt.show()
+
+    pdf_file_path = os.path.join(output_dir, f"accuracy_loss_by_uncertainty.pdf")
+    plt.savefig(pdf_file_path, bbox_inches='tight')
+    print(f"Saved {pdf_file_path}", flush=True)
+
+    plt.close()
+
+
 
 # MAP FUNCTIONS
 # =============================================================================

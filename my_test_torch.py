@@ -41,7 +41,9 @@ if '.' in __name__:
     from .lib.bayesian_model import BayesianENet
     from .lib.analysis import *
     from .lib.plot import (plot_class_uncertainty, plot_reliability_diagram,
-                           plot_accuracy_vs_uncertainty, plot_model_accuracy, plot_confusion_matrix)
+                           plot_accuracy_vs_uncertainty, plot_model_accuracy,
+                           plot_confusion_matrix, plot_uncertainty_distribution,
+                           plot_accuracy_loss_by_uncertainty)
 else:
 
     # To run as a script
@@ -50,8 +52,9 @@ else:
     from lib.bayesian_model import BayesianENet
     from lib.analysis import *
     from lib.plot import (plot_class_uncertainty, plot_reliability_diagram,
-                          plot_accuracy_vs_uncertainty, plot_model_accuracy, plot_confusion_matrix)
-
+                          plot_accuracy_vs_uncertainty, plot_model_accuracy,
+                          plot_confusion_matrix, plot_uncertainty_distribution,
+                          plot_accuracy_loss_by_uncertainty)
 
 # PARAMETERS
 # =============================================================================
@@ -95,7 +98,7 @@ def _parse_args(dataset_list):
 # PREDICT FUNCTIONS
 # =============================================================================
 
-def predict(model, X_test, y_test, samples=100, verbose=True):
+def predict(model, X_test, y_test, samples=100, verbose=False):
     if verbose:
         print(f"Shape of X_test: {X_test.shape}")
         print(f"Shape of y_test: {y_test.shape}")
@@ -117,13 +120,15 @@ def predict(model, X_test, y_test, samples=100, verbose=True):
 
     print("\nGenerating data for the `class uncertainty` plot", flush=True)
     _, avg_Ep, avg_H_Ep = analyse_entropy(predictions, y_test)
-    print("avg_Ep:", avg_Ep)
-    print("Type of avg_Ep:", type(avg_Ep))
-    _, avg_Ep, avg_H_Ep = analyse_false_negative_entropy(predictions, y_test, y_pred_mean)
-    print("avg_Ep:", avg_Ep)
-    print("Type of avg_Ep:", type(avg_Ep))
 
-    return rd_data, acc_data, px_data, avg_Ep, avg_H_Ep, y_pred_mean
+    uncertainty_data = collect_uncertainty_by_case(predictions, y_test, y_pred_mean, num_classes=6)
+
+    false_negatives_uncertainty = uncertainty_data["false_negatives"]
+    false_positives_uncertainty = uncertainty_data["false_positives"]
+    correct_predictions_uncertainty = uncertainty_data["correct_predictions"]
+
+    return (rd_data, acc_data, px_data, avg_Ep, avg_H_Ep, y_pred_mean,
+            false_negatives_uncertainty, false_positives_uncertainty, correct_predictions_uncertainty)
 
 
 def custom_loss(y_true, y_pred):
@@ -139,7 +144,7 @@ def custom_accuracy(y_true, y_pred):
 # MAIN FUNCTION
 # =============================================================================
 
-def test(epochs, verbose=True):
+def test(epochs, verbose=False):
     """Tests the trained bayesian models
 
     The plots are saved in the `TEST_DIR` defined in `config.py`.
@@ -213,22 +218,21 @@ def test(epochs, verbose=True):
         # Get dataset
         X_train, _, _, _, X_test, y_test = get_dataset('args.data_path', 'args.csv_path', 6)
         X_test_tensor = torch.tensor(X_test.squeeze(1), dtype=torch.float32)
-        print(f'X_test.shape: {X_test.shape}\n')
+        # print(f'X_test.shape: {X_test.shape}\n')
         # LOAD MODEL
         # ---------------------------------------------------------------------
         # Load trained model
         input_shape = X_train.shape[2:]
-        print("input_shape: ", input_shape)
+        # print("input_shape: ", input_shape)
         my_model = True
         if my_model:
-            model = BayesianENet(modelo=1, in_features=input_shape[0], output_dim=my_config.NUM_CLASES_TRAIN)
+            model = BayesianENet(modelo=0, in_features=input_shape[0], output_dim=my_config.NUM_CLASES_TRAIN)
             model.load_state_dict(torch.load(model_dir))
             model.eval()
         else:
             model = nn.Linear(input_shape[0], my_config.NUM_CLASES_TRAIN)
             model.load_state_dict(torch.load(model_dir))
             model.eval()
-
         print("Modelo cargado")
 
         # model = tf.keras.models.load_model(model_dir)
@@ -245,15 +249,9 @@ def test(epochs, verbose=True):
         (reliability_data[name],
          acc_data[name],
          px_data[name],
-         avg_Ep, avg_H_Ep, y_pred_mean) = predict(model, X_test_tensor, y_test, samples=passes)
+         avg_Ep, avg_H_Ep, y_pred_mean,
+         uncertainty_fn, uncertainty_fp, uncertainty_correct) = predict(model, X_test_tensor, y_test, samples=passes)
         print(acc_data[name], )
-        # Obtener las predicciones del modelo
-        with torch.no_grad():
-            y_pred = model(X_test_tensor).squeeze(1)
-            y_pred = torch.sigmoid(y_pred).round()
-            y_pred = y_pred.sum(dim=1)
-            y_pred = y_pred.numpy() if isinstance(y_pred, torch.Tensor) else np.array(y_pred)
-            y_pred = y_pred.astype(int)
 
         if verbose:
             print("y_test samples:", y_test[:10])
@@ -265,6 +263,13 @@ def test(epochs, verbose=True):
         # Generar la matriz de confusión
         classes = [f'Class {i}' for i in range(num_classes)]
         plot_confusion_matrix(y_test, y_pred_mean, classes, output_dir, name, normalize=True)
+
+        plot_uncertainty_distribution(uncertainty_fn, output_dir, num_bins=10, uncertainty_type="Predictiva",
+                                      error_type= "falsos negativos")
+        plot_uncertainty_distribution(uncertainty_fp, output_dir, num_bins=10, uncertainty_type="Predictiva",
+                                      error_type="falsos positivos")
+        loss_summary = analyze_correct_predictions_loss(uncertainty_correct, uncertainty_threshold=0.6)
+        plot_accuracy_loss_by_uncertainty(loss_summary, 0.6, output_dir)
 
         # Liberate model
         del model

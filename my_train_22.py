@@ -420,8 +420,7 @@ def train(layer_name, period, epochs, modelo=1):
         if epoch + 1 == epochs:
             save_model(model, output_dir, epoch + 1)
     # Guardar el modelo final
-    final_model_path = os.path.join(output_dir, 'final_model.pth')
-    torch.save(model.state_dict(), final_model_path)
+
     print(f"Entrenamiento finalizado. Modelo guardado en {final_model_path}")
 
 

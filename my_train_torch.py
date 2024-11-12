@@ -351,7 +351,7 @@ def train(layer_name, period, epochs, modelo=1):
     print(f'input_shape: {input_shape}\n')
 
     ####################################################
-    model = BayesianENet(modelo=1, in_features=input_shape[0], output_dim=num_classes)
+    model = BayesianENet(modelo=0, in_features=input_shape[0], output_dim=num_classes)
     optimizer, criterion, loss_fn = model.setup_optimizer_and_criterion(learning_rate)
     ####################################################
     print_callback = _PrintCallback(print_epoch=period, losses_avg_no=max(1, period // 10), start_epoch=0)
@@ -409,11 +409,6 @@ def train(layer_name, period, epochs, modelo=1):
 
         if epoch + 1 == epochs:
             save_model(model, output_dir, epoch + 1)
-    # Guardar el modelo final
-    final_model_path = os.path.join(output_dir, 'final_model.pth')
-    torch.save(model.state_dict(), final_model_path)
-    print(f"Entrenamiento finalizado. Modelo guardado en {final_model_path}")
-
 
     exit()
 
