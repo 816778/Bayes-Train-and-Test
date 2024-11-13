@@ -14,11 +14,14 @@ __maintainer__ = "Adrián Alcolea"
 __license__ = "GPLv3"
 __credits__ = ["Adrián Alcolea", "Javier Resano"]
 
+import csv
+import os
 import sys
 import math
 import numpy as np
 import tensorflow as tf
 import torch
+import pandas as pd
 
 # UNCERTAINTY FUNCTIONS
 #     Global uncertainty (H) corresponds to predictive entropy
@@ -96,6 +99,73 @@ def _expected_entropy(predictions, eps=1e-10):
             entropy[p] -= class_sum
     
     return entropy/num_tests
+
+
+def collect_false_negative_distribution_all_classes(predictions, y_test, y_pred, output_dir="./Test", num_classes=6, num_bins=10):
+    """
+    Genera una tabla de distribución de clases verdaderas para cada clase predicha en diferentes rangos de incertidumbre.
+
+    Parameters
+    ----------
+    predictions : ndarray
+        Array con las predicciones bayesianas.
+    y_test : ndarray
+        Etiquetas verdaderas del conjunto de prueba.
+    y_pred : ndarray
+        Etiquetas predichas por el modelo.
+    num_classes : int, opcional
+        Número total de clases (default: 6).
+    num_bins : int, opcional
+        Número de intervalos para la entropía (default: 10).
+
+    Returns
+    -------
+    dict
+        Un diccionario con un DataFrame para cada clase predicha que muestra la distribución de clases verdaderas
+        en cada rango de incertidumbre.
+    """
+
+    # Calcular la entropía predictiva para cada predicción
+    model_H = _predictive_entropy(predictions)  # Usa tu función de entropía predictiva existente
+
+    # Definir los rangos de incertidumbre (entropía)
+    uncertainty_bins = np.linspace(0.0, 1.0, num_bins + 1)
+
+    # Diccionario para almacenar distribuciones por cada clase predicha
+    distributions_by_predicted_class = {}
+
+    for pred_class in range(num_classes):
+        # Crear una estructura para almacenar las frecuencias de cada clase verdadera en cada rango de incertidumbre
+        distribution = {f"{uncertainty_bins[i]:.1f}-{uncertainty_bins[i + 1]:.1f}": {true_class: 0 for true_class in range(num_classes)} for i in range(num_bins)}
+
+        # Recopilar datos de falsos negativos para la clase predicha actual
+        for H, true_label, pred_label in zip(model_H, y_test, y_pred):
+            true_label = int(true_label)
+            pred_label = int(pred_label)
+
+            # Solo considerar falsos negativos para la clase predicha actual
+            if pred_label == pred_class and true_label != pred_class:
+                # Encontrar el rango de incertidumbre, limitando el índice a num_bins - 1 para evitar el error
+                bin_index = min(np.digitize(H, uncertainty_bins) - 1, num_bins - 1)
+                bin_label = f"{uncertainty_bins[bin_index]:.1f}-{uncertainty_bins[bin_index + 1]:.1f}"
+                distribution[bin_label][true_label] += 1
+
+        # Convertir a DataFrame y calcular el porcentaje de ocurrencias en cada rango de incertidumbre
+        df = pd.DataFrame(distribution).T
+        df = df.div(df.sum(axis=1), axis=0).fillna(0) * 100  # Convertir a porcentaje y llenar NaN con 0
+        distributions_by_predicted_class[pred_class] = df
+    
+    csv_file = os.path.join(output_dir, f"distributions_by_predicted_class.csv")
+
+    with open(csv_file, mode='w') as file:
+        writer = csv.writer(file)
+        for key, value in distributions_by_predicted_class.items():
+            writer.writerow([key, value])
+
+    return distributions_by_predicted_class
+
+
+
 
 # ANALYSIS FUNCTIONS
 # =============================================================================
@@ -402,55 +472,6 @@ def collect_uncertainty_by_case(predictions, y_test, y_pred, num_classes=6, unce
 
     return uncertainty_by_case
 
-
-def analyze_correct_predictions_loss(uncertainty_by_class_correct, uncertainty_threshold=0.5):
-    """
-    Analiza cuántos aciertos se perderían si eliminamos los que tienen alta incertidumbre.
-
-    Parameters
-    ----------
-    uncertainty_by_class_correct : dict
-        Diccionario que contiene listas de incertidumbre para cada clase de los aciertos.
-    uncertainty_threshold : float, opcional
-        Umbral de incertidumbre por encima del cual se considera incierta la predicción (default: 0.5).
-
-    Returns
-    -------
-    loss_summary : dict
-        Diccionario con el porcentaje de aciertos que se perderían para cada clase y globalmente.
-    """
-
-    loss_summary = {}
-    total_correct_predictions = 0
-    total_high_uncertainty = 0
-
-    for label, uncertainties in uncertainty_by_class_correct.items():
-        if uncertainties:  # Si hay datos para esta clase
-            # Total de aciertos en la clase
-            total_class_correct = len(uncertainties)
-            # Número de aciertos con incertidumbre por encima del umbral
-            high_uncertainty_class = sum(1 for u in uncertainties if u > uncertainty_threshold)
-
-            # Calcula el porcentaje de aciertos que se perderían en esta clase
-            class_loss_percentage = (high_uncertainty_class / total_class_correct) * 100
-            loss_summary[label] = class_loss_percentage
-
-            # Acumula en el total global
-            total_correct_predictions += total_class_correct
-            total_high_uncertainty += high_uncertainty_class
-
-    # Porcentaje global de pérdida de aciertos
-    global_loss_percentage = (total_high_uncertainty / total_correct_predictions) * 100
-    loss_summary['global'] = global_loss_percentage
-
-    print(f"Pérdida de aciertos por alta incertidumbre threshole={uncertainty_threshold}:")
-    for label, loss_percentage in loss_summary.items():
-        if label == 'global':
-            print(f"Pérdida Global: {loss_percentage:.2f}%")
-        else:
-            print(f"Clase {label}: {loss_percentage:.2f}%")
-
-    return loss_summary
 
 
 def map_prediction(predictions):

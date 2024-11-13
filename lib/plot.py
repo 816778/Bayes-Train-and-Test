@@ -103,71 +103,38 @@ def plot_uncertainty_distribution(uncertainty_by_class, output_dir, num_bins=10,
 
     # Graficar la distribución de incertidumbre para cada clase
     with PdfPages(pdf_file_path) as pdf:
+        plt.figure()
         for label, uncertainties in uncertainty_by_class.items():
             if uncertainties:  # Solo graficar si hay datos
-                plt.figure()
-                plt.hist(uncertainties, bins=num_bins, alpha=0.5, range=(0, 1))
+                counts, bin_edges = np.histogram(uncertainties, bins=num_bins, range=(0, 1))
+                bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+                plt.plot(bin_centers, counts, label=f"Clase {label}")
+
                 plt.xlabel("Incertidumbre")
                 plt.ylabel("Cantidad de casos")
-                plt.title(
-                    f"Distribución de Incertidumbre {uncertainty_type} para {error_type.capitalize()} de Clase {label}")
+                plt.title(f"Distribución de Incertidumbre {uncertainty_type} para {error_type.capitalize()}")
+                plt.legend()
 
-                # Añadir la figura actual al archivo PDF
                 pdf.savefig()  # Guarda la figura actual en el PDF
                 plt.close()  # Cierra la figura para liberar memoria y evitar solapamientos
 
+        # Graficar todas las clases en una sola figura
+        plt.figure()
+        for label, uncertainties in uncertainty_by_class.items():
+            if uncertainties:  # Solo graficar si hay datos
+                counts, bin_edges = np.histogram(uncertainties, bins=num_bins, range=(0, 1))
+                bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+                plt.plot(bin_centers, counts, label=f"Clase {label}")
+
+        plt.xlabel("Incertidumbre")
+        plt.ylabel("Cantidad de casos")
+        plt.title(f"Distribución de Incertidumbre {uncertainty_type} para {error_type.capitalize()} (Todas las clases)")
+        plt.legend()
+
+        pdf.savefig()
+        plt.close()
+
     print(f"Todas las distribuciones de incertidumbre guardadas en un único archivo PDF: {pdf_file_path}")
-
-
-import matplotlib.pyplot as plt
-
-
-def plot_accuracy_loss_by_uncertainty(loss_summary, uncertainty_threshold, output_dir):
-    """
-    Genera un gráfico de barras para mostrar la pérdida de aciertos por alta incertidumbre para cada clase y globalmente.
-
-    Parameters
-    ----------
-    loss_summary : dict
-        Diccionario con el porcentaje de aciertos que se perderían para cada clase y globalmente.
-    uncertainty_threshold : float
-        Umbral de incertidumbre considerado.
-    """
-
-    # Extraer clases y valores de pérdida
-    labels = list(map(str, loss_summary.keys()))
-    loss_percentages = list(loss_summary.values())
-
-    # Configurar el gráfico
-    plt.figure(figsize=(10, 6))
-    bars = plt.bar(labels, loss_percentages, color='skyblue', edgecolor='black')
-
-    # Añadir una línea de referencia del umbral de incertidumbre
-    plt.axhline(y=uncertainty_threshold * 100, color='red', linestyle='--',
-                label=f'Umbral de incertidumbre ({uncertainty_threshold * 100:.0f}%)')
-
-    # Etiquetas de los ejes y título
-    plt.xlabel('Clase', fontsize=12)
-    plt.ylabel('% Pérdida de Aciertos por Alta Incertidumbre', fontsize=12)
-    plt.title(f'Pérdida de Aciertos al Descartar Predicciones con Incertidumbre > {uncertainty_threshold}', fontsize=14)
-
-    # Añadir etiquetas en las barras
-    for bar, loss in zip(bars, loss_percentages):
-        yval = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width() / 2, yval + 0.5, f'{loss:.2f}%', ha='center', va='bottom', fontsize=10)
-
-    # Añadir leyenda
-    plt.legend()
-
-    # Mostrar o guardar el gráfico
-    plt.tight_layout()
-    plt.show()
-
-    pdf_file_path = os.path.join(output_dir, f"accuracy_loss_by_uncertainty.pdf")
-    plt.savefig(pdf_file_path, bbox_inches='tight')
-    print(f"Saved {pdf_file_path}", flush=True)
-
-    plt.close()
 
 
 

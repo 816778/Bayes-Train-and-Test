@@ -42,8 +42,7 @@ if '.' in __name__:
     from .lib.analysis import *
     from .lib.plot import (plot_class_uncertainty, plot_reliability_diagram,
                            plot_accuracy_vs_uncertainty, plot_model_accuracy,
-                           plot_confusion_matrix, plot_uncertainty_distribution,
-                           plot_accuracy_loss_by_uncertainty)
+                           plot_confusion_matrix, plot_uncertainty_distribution)
 else:
 
     # To run as a script
@@ -53,8 +52,7 @@ else:
     from lib.analysis import *
     from lib.plot import (plot_class_uncertainty, plot_reliability_diagram,
                           plot_accuracy_vs_uncertainty, plot_model_accuracy,
-                          plot_confusion_matrix, plot_uncertainty_distribution,
-                          plot_accuracy_loss_by_uncertainty)
+                          plot_confusion_matrix, plot_uncertainty_distribution)
 
 # PARAMETERS
 # =============================================================================
@@ -120,6 +118,9 @@ def predict(model, X_test, y_test, samples=100, verbose=False):
 
     print("\nGenerating data for the `class uncertainty` plot", flush=True)
     _, avg_Ep, avg_H_Ep = analyse_entropy(predictions, y_test)
+
+    collect_false_negative_distribution_all_classes(predictions, y_test, y_pred_mean)
+
 
     uncertainty_data = collect_uncertainty_by_case(predictions, y_test, y_pred_mean, num_classes=6)
 
@@ -217,7 +218,13 @@ def test(epochs, verbose=False):
         # ---------------------------------------------------------------------
         # Get dataset
         X_train, _, _, _, X_test, y_test = get_dataset('args.data_path', 'args.csv_path', 6)
-        X_test_tensor = torch.tensor(X_test.squeeze(1), dtype=torch.float32)
+        X_train, y_train, X_val, y_val, X_test, y_test = get_dataset('args.data_path', 'args.csv_path', 6)
+
+        X_train_val = np.concatenate((X_train, X_val), axis=0)
+        y_train_val = np.concatenate((y_train, y_val), axis=0)
+        y_test = y_train_val 
+  
+        X_test_tensor = torch.tensor(X_train_val.squeeze(1), dtype=torch.float32)
         # print(f'X_test.shape: {X_test.shape}\n')
         # LOAD MODEL
         # ---------------------------------------------------------------------
@@ -264,13 +271,12 @@ def test(epochs, verbose=False):
         classes = [f'Class {i}' for i in range(num_classes)]
         plot_confusion_matrix(y_test, y_pred_mean, classes, output_dir, name, normalize=True)
 
+
         plot_uncertainty_distribution(uncertainty_fn, output_dir, num_bins=10, uncertainty_type="Predictiva",
                                       error_type= "falsos negativos")
         plot_uncertainty_distribution(uncertainty_fp, output_dir, num_bins=10, uncertainty_type="Predictiva",
                                       error_type="falsos positivos")
-        loss_summary = analyze_correct_predictions_loss(uncertainty_correct, uncertainty_threshold=0.6)
-        plot_accuracy_loss_by_uncertainty(loss_summary, 0.6, output_dir)
-
+    
         # Liberate model
         del model
 
@@ -307,3 +313,18 @@ if __name__ == "__main__":
 
     # Launch main function
     test(epochs)
+
+# TODO: TABLA DE ENTROPÍA SOBRE DATOS DE TRAIN (PARA TODOS LOS FALSOS NEGATIVOS)
+# TODO: PREDICE     U        0   1   2   3   4   5
+# TODO: 0        0-0.1      17% ..% ..% ..% ..% ..%   QUE SUME 100
+# TODO: 0        0.1-0.2    ..% ..% ..% ..% ..% ..%  QUE SUME 100
+# TODO: 0        0.2-0.3    ..% ..% ..% ..% ..% ..%  QUE SUME 100 
+# ...
+# TODO: 5        0.9-1.0    ..% ..% ..% ..% ..% ..%  QUE SUME 100
+# TODO: FIJAR UMBRAL Y VOLVER A CONSTRUIR MATRIZ DE CONFUSIÓN, ELIGES LAS QUE EVALÚAS Y LAS QUE NO EVALÚAS SEGÚN EL UMBRAL
+
+
+
+# TODO: FALSOS NEGATIVOS
+# ENTRENAR CON CASOS SEGUROS (LOS QUE TENGAS MAS DE UN UNCERTANTY SE ELIMINAN DE TODO)
+# TODO: QUÉ % NO CLASIFICARÍAMOS
