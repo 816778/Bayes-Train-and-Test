@@ -37,7 +37,7 @@ if '.' in __name__:
 
     # To run as a module
     from .lib import my_config
-    from lib.data import get_dataset
+    from lib.data import get_dataset, get_filtered_dataset
     from .lib.bayesian_model import BayesianENet
     from .lib.analysis import *
     from .lib.plot import (plot_class_uncertainty, plot_reliability_diagram,
@@ -47,7 +47,7 @@ else:
 
     # To run as a script
     from lib import my_config
-    from lib.data import get_dataset
+    from lib.data import get_dataset, get_filtered_dataset
     from lib.bayesian_model import BayesianENet
     from lib.analysis import *
     from lib.plot import (plot_class_uncertainty, plot_reliability_diagram,
@@ -96,7 +96,7 @@ def _parse_args(dataset_list):
 # PREDICT FUNCTIONS
 # =============================================================================
 
-def predict(model, X_test, y_test, samples=100, verbose=False):
+def predict(model, X_test, y_test, samples=100, verbose=False, images_names=None):
     if verbose:
         print(f"Shape of X_test: {X_test.shape}")
         print(f"Shape of y_test: {y_test.shape}")
@@ -105,6 +105,9 @@ def predict(model, X_test, y_test, samples=100, verbose=False):
     print(f"\nLanzando {samples} predicciones bayesianas")
     predictions = bayesian_predictions_torch(model, X_test, samples=samples)
     y_pred_mean = np.mean(predictions, axis=0).argmax(axis=1)
+
+    if images_names is not None:
+        calculate_uncertainty_for_inputs(predictions, images_names, './Test/')
 
     if verbose:
         print(f"Shape of predictions: {predictions.shape}")
@@ -119,8 +122,8 @@ def predict(model, X_test, y_test, samples=100, verbose=False):
     print("\nGenerating data for the `class uncertainty` plot", flush=True)
     _, avg_Ep, avg_H_Ep = analyse_entropy(predictions, y_test)
 
-    collect_false_negative_distribution_all_classes(predictions, y_test, y_pred_mean)
-
+    collect_distribution_all_classes(predictions, y_test, y_pred_mean)
+    collect_distribution_without_uncertanty(y_test, y_pred_mean)
 
     uncertainty_data = collect_uncertainty_by_case(predictions, y_test, y_pred_mean, num_classes=6)
 
@@ -217,11 +220,15 @@ def test(epochs, verbose=False):
         # GET DATA
         # ---------------------------------------------------------------------
         # Get dataset
-        X_train, _, _, _, X_test, y_test = get_dataset('args.data_path', 'args.csv_path', 6)
-        X_train, y_train, X_val, y_val, X_test, y_test = get_dataset('args.data_path', 'args.csv_path', 6)
+        # X_train, _, _, _, X_test, y_test = get_dataset('args.data_path', 'args.csv_path', 6)
+        X_train, y_train, X_val, y_val, _, y_test, names_train, names_val, _ = get_dataset('args.data_path', 'args.csv_path', 6, return_names=True)
+        # X_train, y_train, X_val, y_val, _, _ = get_filtered_dataset('args.data_path', 'args.csv_path', 6, 
+        #    csv_file='./Test/image_uncertainties_predictive.csv', threshold=0.6, seed=42)
 
         X_train_val = np.concatenate((X_train, X_val), axis=0)
         y_train_val = np.concatenate((y_train, y_val), axis=0)
+        # image_names = np.concatenate((names_train, names_val), axis=0)
+
         y_test = y_train_val 
   
         X_test_tensor = torch.tensor(X_train_val.squeeze(1), dtype=torch.float32)
@@ -233,7 +240,7 @@ def test(epochs, verbose=False):
         # print("input_shape: ", input_shape)
         my_model = True
         if my_model:
-            model = BayesianENet(modelo=0, in_features=input_shape[0], output_dim=my_config.NUM_CLASES_TRAIN)
+            model = BayesianENet(modelo=1, in_features=input_shape[0], output_dim=my_config.NUM_CLASES_TRAIN)
             model.load_state_dict(torch.load(model_dir))
             model.eval()
         else:
@@ -258,7 +265,6 @@ def test(epochs, verbose=False):
          px_data[name],
          avg_Ep, avg_H_Ep, y_pred_mean,
          uncertainty_fn, uncertainty_fp, uncertainty_correct) = predict(model, X_test_tensor, y_test, samples=passes)
-        print(acc_data[name], )
 
         if verbose:
             print("y_test samples:", y_test[:10])

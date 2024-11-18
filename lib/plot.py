@@ -364,7 +364,7 @@ def plot_reliability_diagram(output_dir, data, w, h, colours, num_groups=10):
     print(f"Saved {file_name} in {output_dir}", flush=True)
 
 def plot_accuracy_vs_uncertainty(output_dir, acc_data, px_data, w, h, colours,
-                                 H_limit=1.69, num_groups=10, verbose=0):
+                                 H_limit=1.2, num_groups=12, verbose=0):
     """Generates and saves the `accuracy vs uncertainty` plot
     
     It saves the plot in `output_dir` in pdf format with the name

@@ -165,6 +165,180 @@ def collect_false_negative_distribution_all_classes(predictions, y_test, y_pred,
     return distributions_by_predicted_class
 
 
+def calculate_uncertainty_for_inputs(predictions, image_names, output_dir, uncertainty_type="predictive"):
+    """
+    Calcula la incertidumbre para cada entrada de un conjunto de datos y la guarda en un archivo CSV.
+
+    Parameters
+    ----------
+    predictions : ndarray
+        Predicciones bayesianas generadas por el modelo, de forma (samples, num_inputs, num_classes).
+    image_names : list of str
+        Lista con los nombres de las imágenes asociadas a cada entrada.
+    output_dir : str
+        Directorio donde se guardará el archivo CSV con los resultados.
+    uncertainty_type : str, opcional
+        Tipo de incertidumbre que se calculará ("predictive", "aleatoric" o "epistemic").
+
+    Returns
+    -------
+    uncertainties : ndarray
+        Vector con la incertidumbre de cada entrada (longitud igual al número de entradas).
+    """
+    # Calcular las métricas de incertidumbre
+    model_H = _predictive_entropy(predictions)  # Entropía predictiva
+    model_Ep = _expected_entropy(predictions)   # Entropía esperada (aleatoria)
+    model_H_Ep = model_H - model_Ep             # Incertidumbre epistémica
+
+    # Seleccionar el tipo de incertidumbre
+    if uncertainty_type == "predictive":
+        uncertainties = model_H
+    elif uncertainty_type == "aleatoric":
+        uncertainties = model_Ep
+    elif uncertainty_type == "epistemic":
+        uncertainties = model_H_Ep
+    else:
+        raise ValueError("El tipo de incertidumbre debe ser 'predictive', 'aleatoric' o 'epistemic'")
+
+    # Crear el directorio de salida si no existe
+    os.makedirs(output_dir, exist_ok=True)
+    csv_file = os.path.join(output_dir, f"image_uncertainties_{uncertainty_type}.csv")
+
+    # Guardar los resultados en un archivo CSV
+    with open(csv_file, mode='w', newline='') as file:
+        writer = csv.writer(file, delimiter=';')
+        writer.writerow(["Image Name", "Uncertainty"])  # Encabezados
+        for image_name, uncertainty in zip(image_names, uncertainties):
+            writer.writerow([image_name, uncertainty])
+
+    print(f"Incertidumbres guardadas en {csv_file}")
+    return uncertainties
+
+
+def collect_distribution_all_classes(predictions, y_test, y_pred, output_dir="./Test", num_classes=6, num_bins=10):
+    """
+    Genera una tabla de distribución de clases verdaderas para cada clase predicha en diferentes rangos de incertidumbre,
+    considerando todas las predicciones (no solo los falsos negativos).
+
+    Parameters
+    ----------
+    predictions : ndarray
+        Array con las predicciones bayesianas.
+    y_test : ndarray
+        Etiquetas verdaderas del conjunto de prueba.
+    y_pred : ndarray
+        Etiquetas predichas por el modelo.
+    output_dir : str, opcional
+        Directorio donde se guardará el archivo CSV.
+    num_classes : int, opcional
+        Número total de clases (default: 6).
+    num_bins : int, opcional
+        Número de intervalos para la entropía (default: 10).
+
+    Returns
+    -------
+    dict
+        Un diccionario con un DataFrame para cada clase predicha que muestra la distribución de clases verdaderas
+        en cada rango de incertidumbre.
+    """
+
+    # Calcular la entropía predictiva para cada predicción
+    model_H = _predictive_entropy(predictions)  # Usa tu función de entropía predictiva existente
+
+    # Definir los rangos de incertidumbre (entropía)
+    uncertainty_bins = np.linspace(0.0, 1.0, num_bins + 1)
+
+    # Diccionario para almacenar distribuciones por cada clase predicha
+    distributions_by_predicted_class = {}
+
+    for pred_class in range(num_classes):
+        # Crear una estructura para almacenar las frecuencias de cada clase verdadera en cada rango de incertidumbre
+        distribution = {f"{uncertainty_bins[i]:.1f}-{uncertainty_bins[i + 1]:.1f}": {true_class: 0 for true_class in range(num_classes)} for i in range(num_bins)}
+        counts_per_bin = {f"{uncertainty_bins[i]:.1f}-{uncertainty_bins[i + 1]:.1f}": 0 for i in range(num_bins)}
+
+        # Recopilar datos para la clase predicha actual
+        for H, true_label, pred_label in zip(model_H, y_test, y_pred):
+            true_label = int(true_label)
+            pred_label = int(pred_label)
+
+            # Solo considerar los casos donde la clase predicha es igual a la clase actual en el bucle
+            if pred_label == pred_class:
+                # Encontrar el rango de incertidumbre, limitando el índice a num_bins - 1 para evitar el error
+                bin_index = min(np.digitize(H, uncertainty_bins) - 1, num_bins - 1)
+                bin_label = f"{uncertainty_bins[bin_index]:.1f}-{uncertainty_bins[bin_index + 1]:.1f}"
+                distribution[bin_label][true_label] += 1
+                counts_per_bin[bin_label] += 1
+
+        # Convertir a DataFrame y calcular el porcentaje de ocurrencias en cada rango de incertidumbre
+        df = pd.DataFrame(distribution).T
+        df = df.div(df.sum(axis=1), axis=0).fillna(0) * 100  # Convertir a porcentaje y llenar NaN con 0
+        df["Total Images"] = counts_per_bin.values()  # Agregar columna con el total de imágenes por bin
+        distributions_by_predicted_class[pred_class] = df
+
+    # Guardar todas las distribuciones en un solo archivo CSV
+    csv_file = os.path.join(output_dir, f"distributions_by_predicted_class.csv")
+
+    with open(csv_file, mode='w', newline='') as file:
+        writer = csv.writer(file, delimiter=';')  # Usar ';' como separador
+        writer.writerow(["Predicted Class", "Uncertainty Range", *range(num_classes), "Total Images"])  # Encabezados
+        for pred_class, df in distributions_by_predicted_class.items():
+            for bin_label, row in df.iterrows():
+                writer.writerow([pred_class, bin_label, *row[:-1].values, row["Total Images"]])
+
+    print(f"Distribuciones guardadas en {csv_file}")
+    return distributions_by_predicted_class
+
+
+
+
+def collect_distribution_without_uncertanty(y_true, y_pred, output_dir="./Test", num_classes=6):
+    """
+    Genera una tabla de distribución de clases verdaderas para cada clase predicha,
+    basada en las frecuencias observadas en el conjunto de entrenamiento.
+
+    Parameters
+    ----------
+    y_true : ndarray
+        Etiquetas verdaderas del conjunto de entrenamiento.
+    y_pred : ndarray
+        Etiquetas predichas por el modelo en el conjunto de entrenamiento.
+    output_dir : str, opcional
+        Directorio donde se guardará el archivo CSV.
+    num_classes : int, opcional
+        Número total de clases (default: 6).
+
+    Returns
+    -------
+    DataFrame
+        Un DataFrame que muestra la distribución de clases verdaderas
+        para cada clase predicha.
+    """
+
+    # Inicializar una tabla de frecuencias para cada clase predicha
+    distribution = {pred_class: {true_class: 0 for true_class in range(num_classes)} for pred_class in range(num_classes)}
+
+    # Recopilar datos de frecuencias
+    for true_label, pred_label in zip(y_true, y_pred):
+        true_label = int(true_label)
+        pred_label = int(pred_label)
+        distribution[pred_label][true_label] += 1
+
+    # Convertir a DataFrame y calcular frecuencias relativas
+    df = pd.DataFrame(distribution).T  # Transponer para que las filas sean las clases predichas
+    df = df.div(df.sum(axis=1), axis=0).fillna(0) * 100  # Convertir a porcentajes y manejar NaN
+    df.columns = [f"True Class {i}" for i in range(num_classes)]
+    df.index.name = "Predicted Class"
+
+    # Guardar en un archivo CSV
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    csv_file = os.path.join(output_dir, "class_distribution_without_uncertainty.csv")
+    df.to_csv(csv_file, sep=';')
+    print(f"Distribución de clases verdaderas guardada en {csv_file}")
+
+    return df
+
+
 
 
 # ANALYSIS FUNCTIONS

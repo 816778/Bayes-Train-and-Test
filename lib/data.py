@@ -27,6 +27,7 @@ import sys
 import pandas as pd
 import ast
 import torch
+import pandas as pd
 
 
 # DATA FUNCTIONS
@@ -138,7 +139,7 @@ def _preprocess(X, y, standardisation=False, only_labelled=True):
 # GET DATASET FUNCTION
 # =============================================================================
 
-def get_dataset(dataset, data_path, p_train, seed=35):
+def get_dataset(dataset, data_path, p_train, seed=35, return_names = False):
     """Returns the preprocessed training and testing data and labels
     
     Parameters
@@ -178,22 +179,194 @@ def get_dataset(dataset, data_path, p_train, seed=35):
 
     # Load image
     image_names, X, y = _load_image()
+
+    # Separate into train and test data sets
+    X_train, X_temp, y_train, y_temp, names_train, names_temp = train_test_split(
+        X, y, image_names, test_size=0.3, random_state=seed)
+
+    X_val, X_test, y_val, y_test, names_val, names_test = train_test_split(
+        X_temp, y_temp, names_temp, test_size=0.5, random_state=seed)
+    
+    print(f"X train Shape: {X_train.shape}")
+    print(f"y train Shape: {y_train.shape}")
+    print(f"Unique classes in y_test: {np.unique(y)}")
+
+    if return_names:
+        return X_train, y_train, X_val, y_val, X_test, y_test, names_train, names_val, names_test
+    else:
+        return X_train, y_train, X_val, y_val, X_test, y_test
+
+
+def get_filtered_dataset(dataset, data_path, p_train, csv_file, threshold, seed=35, return_names=False):
+    """
+    Filtra las imágenes con incertidumbre menor o igual al umbral indicado
+    DESPUÉS de dividir los datos en entrenamiento, validación y prueba.
+
+    Parameters
+    ----------
+    dataset : dict
+        Dict structure with information of the image. Described in the
+        config module of bnn4hi package.
+    data_path : str
+        Path of the datasets. It can be an absolute path or relative
+        from the execution path.
+    p_train : float
+        Represents, from 0.0 to 1.0, the proportion of the dataset that
+        will be used for the training set.
+    csv_file : str
+        Ruta al archivo CSV que contiene las incertidumbres y nombres de imágenes.
+    threshold : float
+        Umbral de incertidumbre. Solo se incluirán imágenes con incertidumbre <= threshold.
+    seed : int, optional (default: 35)
+        Random seed used to shuffle the data.
+    return_names : bool, optional (default: False)
+        Si es True, también devuelve los nombres de las imágenes.
+
+    Returns
+    -------
+    X_train : ndarray
+        Training data set.
+    y_train : ndarray
+        Training data set labels.
+    X_val : ndarray
+        Validation data set.
+    y_val : ndarray
+        Validation data set labels.
+    X_test : ndarray
+        Testing data set.
+    y_test : ndarray
+        Testing data set labels.
+    (Opcional) names_train, names_val, names_test : list
+        Listas con los nombres de las imágenes en cada conjunto.
+    """
+
+    # Load image data
+    image_names, X, y = _load_image()
     print(f"X Shape: {X.shape}")
     print(f"y Shape: {y.shape}")
     print(f"Unique classes in y_test: {np.unique(y)}")
 
+    # Load uncertainty data from CSV
+    uncertainty_df = pd.read_csv(csv_file, delimiter=";")
+    print(f"Loaded uncertainty data from {csv_file}")
+
+    # Map uncertainties to image names for filtering later
+    uncertainty_map = dict(zip(uncertainty_df["Image Name"], uncertainty_df["Uncertainty"]))
+
     # Separate into train and test data sets
-    X_train, X_temp, y_train, y_temp = train_test_split(X, y,
-                                                        test_size=0.3,
-                                                        random_state=seed)
+    X_train, X_temp, y_train, y_temp, names_train, names_temp = train_test_split(
+        X, y, image_names, test_size=0.3, random_state=seed)
 
     # Split the remaining 30% equally into validation and testing (15% each)
-    X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp,
-                                                    test_size=0.5,
-                                                    random_state=seed)
+    X_val, X_test, y_val, y_test, names_val, names_test = train_test_split(
+        X_temp, y_temp, names_temp, test_size=0.5, random_state=seed)
 
-    return X_train, y_train, X_val, y_val, X_test, y_test
+    # Filter each set based on the uncertainty threshold
+    def filter_by_uncertainty(X, y, names):
+        filtered_indices = [
+            i for i, name in enumerate(names) if uncertainty_map.get(name, float("inf")) <= threshold
+        ]
+        X_filtered = X[filtered_indices]
+        y_filtered = y[filtered_indices]
+        names_filtered = [names[i] for i in filtered_indices]
+        return X_filtered, y_filtered, names_filtered
 
+    X_train, y_train, names_train = filter_by_uncertainty(X_train, y_train, names_train)
+    X_val, y_val, names_val = filter_by_uncertainty(X_val, y_val, names_val)
+    X_test, y_test, names_test = filter_by_uncertainty(X_test, y_test, names_test)
+
+    # Imprimir tamaño de sets
+    print(f"X_train Shape: {X_train.shape}")
+    print(f"y_train Shape: {y_train.shape}")
+    print(f"X_val Shape: {X_val.shape}")
+    print(f"y_val Shape: {y_val.shape}")
+    print(f"X_test Shape: {X_test.shape}")
+    print(f"y_test Shape: {y_test.shape}")
+
+    # Return datasets
+    if return_names:
+        return X_train, y_train, X_val, y_val, X_test, y_test, names_train, names_val, names_test
+    else:
+        return X_train, y_train, X_val, y_val, X_test, y_test
+
+
+
+def get_filtered_dataset_after(dataset, data_path, p_train, csv_file, threshold, seed=35, return_names=False):
+    """
+    Filtra las imágenes con incertidumbre menor o igual al umbral indicado y devuelve los conjuntos de datos preprocesados.
+
+    Parameters
+    ----------
+    dataset : dict
+        Dict structure with information of the image. Described in the
+        config module of bnn4hi package.
+    data_path : str
+        Path of the datasets. It can be an absolute path or relative
+        from the execution path.
+    p_train : float
+        Represents, from 0.0 to 1.0, the proportion of the dataset that
+        will be used for the training set.
+    csv_file : str
+        Ruta al archivo CSV que contiene las incertidumbres y nombres de imágenes.
+    threshold : float
+        Umbral de incertidumbre. Solo se incluirán imágenes con incertidumbre <= threshold.
+    seed : int, optional (default: 35)
+        Random seed used to shuffle the data.
+    return_names : bool, optional (default: False)
+        Si es True, también devuelve los nombres de las imágenes.
+
+    Returns
+    -------
+    X_train : ndarray
+        Training data set.
+    y_train : ndarray
+        Training data set labels.
+    X_val : ndarray
+        Validation data set.
+    y_val : ndarray
+        Validation data set labels.
+    X_test : ndarray
+        Testing data set.
+    y_test : ndarray
+        Testing data set labels.
+    (Opcional) names_train, names_val, names_test : list
+        Listas con los nombres de las imágenes en cada conjunto.
+    """
+
+    # Load image data
+    image_names, X, y = _load_image()
+    print(f"X Shape: {X.shape}")
+    print(f"y Shape: {y.shape}")
+    print(f"Unique classes in y_test: {np.unique(y)}")
+
+    # Load uncertainty data from CSV
+    uncertainty_df = pd.read_csv(csv_file, delimiter=";")
+    print(f"Loaded uncertainty data from {csv_file}")
+
+    # Filter images based on the uncertainty threshold
+    filtered_df = uncertainty_df[uncertainty_df["Uncertainty"] <= threshold]
+    filtered_image_names = filtered_df["Image Name"].tolist()
+    print(f"Number of images after filtering by threshold {threshold}: {len(filtered_image_names)}")
+
+    # Filter the image data based on the filtered names
+    mask = [name in filtered_image_names for name in image_names]
+    X_filtered = X[mask]
+    y_filtered = y[mask]
+    image_names_filtered = [name for name, keep in zip(image_names, mask) if keep]
+
+    # Separate into train and test data sets
+    X_train, X_temp, y_train, y_temp, names_train, names_temp = train_test_split(
+        X_filtered, y_filtered, image_names_filtered, test_size=0.3, random_state=seed)
+
+    # Split the remaining 30% equally into validation and testing (15% each)
+    X_val, X_test, y_val, y_test, names_val, names_test = train_test_split(
+        X_temp, y_temp, names_temp, test_size=0.5, random_state=seed)
+
+    # Return datasets
+    if return_names:
+        return X_train, y_train, X_val, y_val, X_test, y_test, names_train, names_val, names_test
+    else:
+        return X_train, y_train, X_val, y_val, X_test, y_test
 
 # NOISY DATASET FUNCTIONS
 # =============================================================================

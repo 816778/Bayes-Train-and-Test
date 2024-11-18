@@ -26,7 +26,7 @@ if '.' in __name__:
     from .lib.model import create_bayesian_model
     from .lib.bayesian_model import BayesianENet
     from .lib import my_config
-    from .lib.data import get_dataset, get_mixed_dataset
+    from .lib.data import get_dataset, get_mixed_dataset, get_filtered_dataset
     # from .lib.BayesianNN import BayesianNN
 
 else:
@@ -34,7 +34,7 @@ else:
     from lib.model import create_bayesian_model
     from lib.bayesian_model import BayesianENet
     from lib import my_config
-    from lib.data import get_dataset, get_mixed_dataset
+    from lib.data import get_dataset, get_mixed_dataset, get_filtered_dataset
     # from lib.BayesianNN import BayesianNN
 
 
@@ -312,6 +312,9 @@ def train(layer_name, period, epochs, modelo=1):
     # ---------------------------------------------------------------------
     # Get dataset
     X_train, y_train, X_val, y_val, _, _ = get_dataset(args.data_path, args.csv_path, 6)
+    X_train, y_train, X_val, y_val, _, _ = get_filtered_dataset(args.data_path, args.csv_path, 6, 
+        csv_file='./Test/image_uncertainties_predictive.csv', threshold=0.6, seed=42,
+    )
 
     # X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
     # X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
@@ -351,7 +354,7 @@ def train(layer_name, period, epochs, modelo=1):
     print(f'input_shape: {input_shape}\n')
 
     ####################################################
-    model = BayesianENet(modelo=0, in_features=input_shape[0], output_dim=num_classes)
+    model = BayesianENet(modelo=1, in_features=input_shape[0], output_dim=num_classes)
     optimizer, criterion, loss_fn = model.setup_optimizer_and_criterion(learning_rate)
     ####################################################
     print_callback = _PrintCallback(print_epoch=period, losses_avg_no=max(1, period // 10), start_epoch=0)
