@@ -1,9 +1,0 @@
-tensor([[0.9992, 0.9988, 0.9059, 0.1952, 0.0427]], device='cuda:0')
-
-tensor([[0.9988, 0.9989, 0.9358, 0.2453, 0.0503]], device='cuda:0')
-Activaciones guardadas en feature_activations_all.npy
-Shape of LOGITS after concatenation and averaging: torch.Size([1, 5])
-tensor([[0.9990, 0.9988, 0.9208, 0.2202, 0.0465]])
-[3.1853616]
-
-

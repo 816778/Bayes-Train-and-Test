@@ -67,3 +67,27 @@ class BayesianENet(nn.Module):
             self.bayesian_fc.weight_mu.copy_(torch.tensor(pretrained_weights))
             self.bayesian_fc.bias_mu.copy_(torch.tensor(pretrained_bias))
             # TODO: modificacion sigma a 0 PRUEBA
+
+
+    def summary(self, input_size):
+        """
+        Imprime un resumen del modelo incluyendo las capas, dimensiones de salida y parámetros.
+
+        Parameters
+        ----------
+        input_size : tuple
+            Dimensiones de entrada al modelo (sin incluir el tamaño del batch).
+        """
+        print(f"{'Layer':<20}{'Output Shape':<25}{'Param #':<15}")
+        print("=" * 60)
+
+        total_params = 0
+        x = torch.zeros(1, *input_size)  # Simula una entrada
+        for name, module in self.named_children():
+            x = module(x)
+            num_params = sum(p.numel() for p in module.parameters())
+            total_params += num_params
+            print(f"{name:<20}{str(list(x.shape)):<25}{num_params:<15}")
+
+        print("=" * 60)
+        print(f"Total Params: {total_params}")

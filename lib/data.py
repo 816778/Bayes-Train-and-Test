@@ -59,7 +59,7 @@ def _load_image(file_path='/data/hook/feature_activations.npy', csv_path='/data/
     if is_torch:
         activations = torch.tensor(activations, dtype=torch.float32)
 
-    print(f"Cantidad de imágenes cargadas: {len(image_names)}")
+    print(f"Imágenes cargadas: {len(image_names)}\n")
     return np.array(image_names), np.array(activations), np.array(y)
 
 
@@ -139,7 +139,7 @@ def _preprocess(X, y, standardisation=False, only_labelled=True):
 # GET DATASET FUNCTION
 # =============================================================================
 
-def get_dataset(dataset, data_path, p_train, seed=35, return_names = False):
+def get_dataset(file_path, csv_path, seed=35, return_names = False):
     """Returns the preprocessed training and testing data and labels
     
     Parameters
@@ -178,7 +178,7 @@ def get_dataset(dataset, data_path, p_train, seed=35, return_names = False):
     """
 
     # Load image
-    image_names, X, y = _load_image()
+    image_names, X, y = _load_image(file_path, csv_path)
 
     # Separate into train and test data sets
     X_train, X_temp, y_train, y_temp, names_train, names_temp = train_test_split(
@@ -187,9 +187,6 @@ def get_dataset(dataset, data_path, p_train, seed=35, return_names = False):
     X_val, X_test, y_val, y_test, names_val, names_test = train_test_split(
         X_temp, y_temp, names_temp, test_size=0.5, random_state=seed)
     
-    print(f"X train Shape: {X_train.shape}")
-    print(f"y train Shape: {y_train.shape}")
-    print(f"Unique classes in y_test: {np.unique(y)}")
 
     if return_names:
         return X_train, y_train, X_val, y_val, X_test, y_test, names_train, names_val, names_test
@@ -197,7 +194,7 @@ def get_dataset(dataset, data_path, p_train, seed=35, return_names = False):
         return X_train, y_train, X_val, y_val, X_test, y_test
 
 
-def get_filtered_dataset(dataset, data_path, p_train, csv_file, threshold, seed=35, return_names=False):
+def get_filtered_dataset(file_path, csv_path, csv_file_uncertanty, threshold, seed=35, return_names=False):
     """
     Filtra las imágenes con incertidumbre menor o igual al umbral indicado
     DESPUÉS de dividir los datos en entrenamiento, validación y prueba.
@@ -241,14 +238,14 @@ def get_filtered_dataset(dataset, data_path, p_train, csv_file, threshold, seed=
     """
 
     # Load image data
-    image_names, X, y = _load_image()
+    image_names, X, y = _load_image(file_path, csv_path)
     print(f"X Shape: {X.shape}")
     print(f"y Shape: {y.shape}")
     print(f"Unique classes in y_test: {np.unique(y)}")
 
     # Load uncertainty data from CSV
-    uncertainty_df = pd.read_csv(csv_file, delimiter=";")
-    print(f"Loaded uncertainty data from {csv_file}")
+    uncertainty_df = pd.read_csv(csv_file_uncertanty, delimiter=";")
+    print(f"Loaded uncertainty data from {csv_file_uncertanty}")
 
     # Map uncertainties to image names for filtering later
     uncertainty_map = dict(zip(uncertainty_df["Image Name"], uncertainty_df["Uncertainty"]))

@@ -285,7 +285,7 @@ def collect_distribution_all_classes(predictions, y_test, y_pred, output_dir="./
             for bin_label, row in df.iterrows():
                 writer.writerow([pred_class, bin_label, *row[:-1].values, row["Total Images"]])
 
-    print(f"Distribuciones guardadas en {csv_file}")
+    print(f"Distribuciones con incertirdumbre en: {csv_file}")
     return distributions_by_predicted_class
 
 
@@ -334,7 +334,7 @@ def collect_distribution_without_uncertanty(y_true, y_pred, output_dir="./Test",
         os.makedirs(output_dir)
     csv_file = os.path.join(output_dir, "class_distribution_without_uncertainty.csv")
     df.to_csv(csv_file, sep=';')
-    print(f"Distribución de clases verdaderas guardada en {csv_file}")
+    print(f"Distribución sin incertidumbre en: {csv_file}")
 
     return df
 
@@ -789,7 +789,7 @@ def bayesian_predictions_torch(model, X_test, samples=100):
             summed_predictions = prediction.sum(dim=1) # .long()
             num_classes = 6
             one_hot_predictions = smooth_one_hot_predictions(summed_predictions, num_classes)
-            # one_hot_predictions = torch.eye(num_classes)[summed_predictions]
+            # one_hot_predictions = torch.eye(num_classes)[summed_predictions.long()]
             predictions.append(one_hot_predictions.cpu().numpy())
     predictions = np.array(predictions)
     # End of progress bar

@@ -134,7 +134,7 @@ def plot_uncertainty_distribution(uncertainty_by_class, output_dir, num_bins=10,
         pdf.savefig()
         plt.close()
 
-    print(f"Todas las distribuciones de incertidumbre guardadas en un único archivo PDF: {pdf_file_path}")
+    print(f"Incertidumbre guardadas en: {pdf_file_path}")
 
 
 

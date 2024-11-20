@@ -81,13 +81,13 @@ def _parse_args(dataset_list):
     parser = ArgumentParser(description=__doc__,
                             formatter_class=RawDescriptionHelpFormatter)
 
-    # Add arguments
-    parser.add_argument("epochs",
-                        type=int,
-                        nargs=len(dataset_list),
-                        help=("List of the epoch of the selected checkpoint "
+    parser.add_argument("data_path", default='./Data/feature_activations.npy', help="Ruta a la carpeta con los archivos CSV de datos")
+    parser.add_argument("csv_path", default='/data/train.csv', help="Ruta a la carpeta con los archivos CSV de datos")
+    parser.add_argument("epochs", type=int, nargs=len(dataset_list), help=("List of the epoch of the selected checkpoint "
                               "for testing each model. The order must "
                               f"correspond to: {dataset_list}."))
+    parser.add_argument("modelo", type=int, help="Número de modelo que se va a ejecutar")
+
 
     # Return the analysed parameters
     return parser.parse_args()
@@ -96,7 +96,7 @@ def _parse_args(dataset_list):
 # PREDICT FUNCTIONS
 # =============================================================================
 
-def predict(model, X_test, y_test, samples=100, verbose=False, images_names=None):
+def predict(model, X_test, y_test, num_classes, samples=100, verbose=False, images_names=None):
     if verbose:
         print(f"Shape of X_test: {X_test.shape}")
         print(f"Shape of y_test: {y_test.shape}")
@@ -125,7 +125,7 @@ def predict(model, X_test, y_test, samples=100, verbose=False, images_names=None
     collect_distribution_all_classes(predictions, y_test, y_pred_mean)
     collect_distribution_without_uncertanty(y_test, y_pred_mean)
 
-    uncertainty_data = collect_uncertainty_by_case(predictions, y_test, y_pred_mean, num_classes=6)
+    uncertainty_data = collect_uncertainty_by_case(predictions, y_test, y_pred_mean, num_classes=num_classes)
 
     false_negatives_uncertainty = uncertainty_data["false_negatives"]
     false_positives_uncertainty = uncertainty_data["false_positives"]
@@ -165,7 +165,6 @@ def test(epochs, verbose=False):
     # -------------------------------------------------------------------------
 
     # Input, output and dataset references
-    d_path = my_config.DATA_PATH
     base_dir = my_config.MODELS_DIR
     datasets = my_config.DATASETS
     output_dir = my_config.TEST_DIR
@@ -220,30 +219,37 @@ def test(epochs, verbose=False):
         # GET DATA
         # ---------------------------------------------------------------------
         # Get dataset
-        # X_train, _, _, _, X_test, y_test = get_dataset('args.data_path', 'args.csv_path', 6)
-        X_train, y_train, X_val, y_val, _, y_test, names_train, names_val, _ = get_dataset('args.data_path', 'args.csv_path', 6, return_names=True)
-        # X_train, y_train, X_val, y_val, _, _ = get_filtered_dataset('args.data_path', 'args.csv_path', 6, 
-        #    csv_file='./Test/image_uncertainties_predictive.csv', threshold=0.6, seed=42)
+        X_train, _, _, _, X_test, y_test = get_dataset(file_path=args.data_path, csv_path=args.csv_path, seed=35)
 
-        X_train_val = np.concatenate((X_train, X_val), axis=0)
-        y_train_val = np.concatenate((y_train, y_val), axis=0)
-        # image_names = np.concatenate((names_train, names_val), axis=0)
+        use_train_data = False
 
-        y_test = y_train_val 
+        if use_train_data:
+            X_train, y_train, X_val, y_val, _, _ = get_dataset(file_path=args.data_path, 
+                csv_path=args.csv_path, seed=35)
+            
+            X_train_val = np.concatenate((X_train, X_val), axis=0)
+            y_train_val = np.concatenate((y_train, y_val), axis=0)
+            # image_names = np.concatenate((names_train, names_val), axis=0)
+
+            X_test = X_train_val
+            y_test = y_train_val 
   
-        X_test_tensor = torch.tensor(X_train_val.squeeze(1), dtype=torch.float32)
-        # print(f'X_test.shape: {X_test.shape}\n')
+        X_test_tensor = torch.tensor(X_test.squeeze(1), dtype=torch.float32)
+
         # LOAD MODEL
         # ---------------------------------------------------------------------
         # Load trained model
         input_shape = X_train.shape[2:]
-        # print("input_shape: ", input_shape)
+
         my_model = True
         if my_model:
-            model = BayesianENet(modelo=1, in_features=input_shape[0], output_dim=my_config.NUM_CLASES_TRAIN)
-            model.load_state_dict(torch.load(model_dir))
+            print(f"Modelo: {args.modelo}")
+            model = BayesianENet(modelo=args.modelo, in_features=input_shape[0], output_dim=my_config.NUM_CLASES_TRAIN)
+            model.summary(input_shape)
+            model.load_state_dict(torch.load(model_dir, weights_only=True))
             model.eval()
         else:
+            print(f"Modelo original")
             model = nn.Linear(input_shape[0], my_config.NUM_CLASES_TRAIN)
             model.load_state_dict(torch.load(model_dir))
             model.eval()
@@ -264,7 +270,7 @@ def test(epochs, verbose=False):
          acc_data[name],
          px_data[name],
          avg_Ep, avg_H_Ep, y_pred_mean,
-         uncertainty_fn, uncertainty_fp, uncertainty_correct) = predict(model, X_test_tensor, y_test, samples=passes)
+         uncertainty_fn, uncertainty_fp, uncertainty_correct) = predict(model, X_test_tensor, y_test, num_classes, samples=passes)
 
         if verbose:
             print("y_test samples:", y_test[:10])
@@ -296,7 +302,7 @@ def test(epochs, verbose=False):
     print('#' * 80, flush=True)
 
     # Generate accuracy plot
-    plot_model_accuracy(acc_data, output_dir)
+    # plot_model_accuracy(acc_data, output_dir)
 
     # GROUPED PLOTS
     # -------------------------------------------------------------------------
