@@ -87,6 +87,8 @@ def _parse_args(dataset_list):
                               "for testing each model. The order must "
                               f"correspond to: {dataset_list}."))
     parser.add_argument("modelo", type=int, help="Número de modelo que se va a ejecutar")
+    parser.add_argument('--train_data', type=int, default=0, help="Hacer test sobre los datos de entrenamiento")
+    parser.add_argument('--my_models', type=int, default=1, help="Usar mis modelos")
 
 
     # Return the analysed parameters
@@ -213,23 +215,24 @@ def test(epochs, verbose=False):
             print("MODELO NO ENCONTRADO")
             exit()
         else:
-            model_dir = os.path.join(model_dir, f"epoch_{epochs[name]}.pth")
+            model_dir = os.path.join(model_dir, f"epoch_{epochs[name]}_{args.modelo}.pth")
 
         print("MODEL DIR: ", model_dir)
         # GET DATA
         # ---------------------------------------------------------------------
         # Get dataset
-        X_train, _, _, _, X_test, y_test = get_dataset(file_path=args.data_path, csv_path=args.csv_path, seed=35)
+        _, _, _, _, X_test, y_test = get_dataset(file_path=args.data_path, csv_path=args.csv_path, seed=35)
 
-        use_train_data = False
+        use_train_data = True if args.train_data == 1 else False
+        image_names = None
 
         if use_train_data:
-            X_train, y_train, X_val, y_val, _, _ = get_dataset(file_path=args.data_path, 
-                csv_path=args.csv_path, seed=35)
+            X_train, y_train, X_val, y_val, _, _, names_train, names_val, _ = get_dataset(file_path=args.data_path, 
+                csv_path=args.csv_path, seed=35, return_names=True)
             
             X_train_val = np.concatenate((X_train, X_val), axis=0)
             y_train_val = np.concatenate((y_train, y_val), axis=0)
-            # image_names = np.concatenate((names_train, names_val), axis=0)
+            image_names = np.concatenate((names_train, names_val), axis=0)
 
             X_test = X_train_val
             y_test = y_train_val 
@@ -239,20 +242,19 @@ def test(epochs, verbose=False):
         # LOAD MODEL
         # ---------------------------------------------------------------------
         # Load trained model
-        input_shape = X_train.shape[2:]
+        input_shape = X_test.shape[2:]
 
-        my_model = True
+        my_model = True if args.my_models == 1 else False
         if my_model:
             print(f"Modelo: {args.modelo}")
             model = BayesianENet(modelo=args.modelo, in_features=input_shape[0], output_dim=my_config.NUM_CLASES_TRAIN)
             model.summary(input_shape)
-            model.load_state_dict(torch.load(model_dir, weights_only=True))
-            model.eval()
         else:
             print(f"Modelo original")
             model = nn.Linear(input_shape[0], my_config.NUM_CLASES_TRAIN)
-            model.load_state_dict(torch.load(model_dir))
-            model.eval()
+        
+        model.load_state_dict(torch.load(model_dir, weights_only=True))
+        model.eval()
         print("Modelo cargado")
 
         # model = tf.keras.models.load_model(model_dir)
@@ -270,7 +272,7 @@ def test(epochs, verbose=False):
          acc_data[name],
          px_data[name],
          avg_Ep, avg_H_Ep, y_pred_mean,
-         uncertainty_fn, uncertainty_fp, uncertainty_correct) = predict(model, X_test_tensor, y_test, num_classes, samples=passes)
+         uncertainty_fn, uncertainty_fp, uncertainty_correct) = predict(model, X_test_tensor, y_test, num_classes, samples=passes, images_names=image_names)
 
         if verbose:
             print("y_test samples:", y_test[:10])

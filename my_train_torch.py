@@ -47,6 +47,7 @@ def _parse_args():
     parser.add_argument("epochs", type=int, help="Total number of epochs to train.")
     parser.add_argument("dataset_name", help="Nombre del conjunto de datos para la generación del archivo de salida")
     parser.add_argument("modelo", type=int, help="Número de modelo que se va a ejecutar")
+    parser.add_argument('--threshole', type=float, default=None, help="Umbral para la clasificación de las muestras")
     parser.add_argument('--l1_n', type=int, default=128, help="Número de neuronas en la primera capa oculta")
     parser.add_argument('--l2_n', type=int, default=64, help="Número de neuronas en la segunda capa oculta")
     parser.add_argument('--learning_rate', type=float, default=0.001, help="Tasa de aprendizaje")
@@ -96,8 +97,8 @@ def intercambiar_etiquetas(y, clase1, clase2, random_state=None):
 
     return y_modificado
 
-def save_model(model, output_dir, epoch):
-    model_path = os.path.join(output_dir, f'epoch_{epoch}.pth')
+def save_model(model, output_dir, epoch, modelo=0):
+    model_path = os.path.join(output_dir, f'epoch_{epoch}_{modelo}.pth')
     torch.save(model.state_dict(), model_path)
     print(f"Modelo guardado en {model_path}")
 
@@ -140,9 +141,12 @@ def train(layer_name, epochs, modelo=1):
     # GET DATA
     # ---------------------------------------------------------------------
     # Get dataset
-    X_train, y_train, X_val, y_val, _, _ = get_dataset(file_path=args.data_path, csv_path=args.csv_path, seed=35)
-    # X_train, y_train, X_val, y_val, _, _ = get_filtered_dataset(args.data_path, args.csv_path, 
-    #    csv_file_uncertanty='./Test/image_uncertainties_predictive.csv', threshold=0.6, seed=35,)
+    if args.threshole is None:
+        X_train, y_train, X_val, y_val, _, _ = get_dataset(file_path=args.data_path, csv_path=args.csv_path, seed=35)
+    else:
+        X_train, y_train, X_val, y_val, _, _ = get_filtered_dataset(args.data_path, args.csv_path, 
+            csv_file_uncertanty='./Data/image_uncertainties_predictive.csv', threshold=args.threshole, seed=35)
+
 
 
     X_train_tensor = torch.tensor(X_train.squeeze(1), dtype=torch.float32)
@@ -231,7 +235,7 @@ def train(layer_name, epochs, modelo=1):
             f"Epoch {epoch + 1}/{epochs}, Training Loss: {train_loss:.4f}, Training Accuracy: {train_accuracy:.2f}%, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
 
         if epoch + 1 == epochs:
-            save_model(model, output_dir, epoch + 1)
+            save_model(model, output_dir, epoch + 1, args.modelo)
 
     exit()
 

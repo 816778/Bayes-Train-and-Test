@@ -19,17 +19,12 @@ class BayesianENet(nn.Module):
                                                out_features=output_dim)
 
         elif self.model_num == 2:
-            self.bayesian_fc = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=in_features,
-                                               out_features=output_dim)
-
-        else:
-            self.bayesian_fc1 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=in_features,
-                                                out_features=hidden_dim)
-            self.bayesian_fc2 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim,
-                                                out_features=hidden_dim)
-            self.bayesian_fc3 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim,
-                                                out_features=output_dim)
-
+            self.fc1 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=in_features, out_features=32)
+            self.fc2 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=32, out_features=16)
+            self.dropout = nn.Dropout(0.5)
+            self.fc3 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=16, out_features=8)
+            self.fc4 = bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=8, out_features=output_dim)
+            
     def forward(self, x):
         if self.model_num == 0:
             x = torch.relu(self.fc1(x))
@@ -38,13 +33,11 @@ class BayesianENet(nn.Module):
         elif self.model_num == 1:
             x = self.bayesian_fc(x)
         elif self.model_num == 2:
-            x = self.bayesian_fc(x)
-            return torch.softmax(x, dim=-1)
-        else:
-            x = torch.relu(self.bayesian_fc1(x))
-            x = torch.relu(self.bayesian_fc2(x))
-            x = self.bayesian_fc3(x)
-            return torch.softmax(x, dim=-1)
+            x = torch.relu(self.fc1(x))
+            x = torch.relu(self.fc2(x))
+            x = self.dropout(x)
+            x = torch.relu(self.fc3(x))
+            x = self.fc4(x)
         return x
 
     def setup_optimizer_and_criterion(self, learning_rate):

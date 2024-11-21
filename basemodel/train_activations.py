@@ -33,7 +33,7 @@ myfc = nn.Linear(input_dim, output_dim)
 optimizer = optim.Adam(myfc.parameters(), lr=0.001)
 criterion = nn.BCEWithLogitsLoss()
 
-n_epochs = 10
+n_epochs = 15
 myfc.train()
 for epoch in range(n_epochs):
     optimizer.zero_grad()
@@ -71,6 +71,6 @@ with torch.no_grad():
 save_dir = "/home/eryka/Bayes/Models/fc_32-16model_0.5train_0.01lr/"
 if not os.path.isdir(save_dir):
     os.makedirs(save_dir)
-torch.save(myfc.state_dict(), save_dir + "epoch_10.pth")
+torch.save(myfc.state_dict(), save_dir + f"epoch_{n_epochs}.pth")
 print("Modelo myfc entrenado y guardado en " + save_dir)
 
