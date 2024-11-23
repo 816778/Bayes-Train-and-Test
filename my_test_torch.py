@@ -110,6 +110,7 @@ def predict(model, X_test, y_test, num_classes, samples=100, verbose=False, imag
 
     if images_names is not None:
         calculate_uncertainty_for_inputs(predictions, images_names, './Test/')
+        calculate_uncertainty_with_labels(predictions, images_names, y_test, y_pred_mean,'./Test/')
 
     if verbose:
         print(f"Shape of predictions: {predictions.shape}")

@@ -165,6 +165,75 @@ def collect_false_negative_distribution_all_classes(predictions, y_test, y_pred,
     return distributions_by_predicted_class
 
 
+def calculate_uncertainty_with_labels(predictions, image_names, y_test, y_pred, output_dir, uncertainty_type="predictive", correct_factor=0.8, incorrect_factor=1.2):
+    """
+    Calcula la incertidumbre para cada entrada de un conjunto de datos, considerando si las predicciones son correctas o no,
+    y la guarda en un archivo CSV.
+
+    Parameters
+    ----------
+    predictions : ndarray
+        Predicciones bayesianas generadas por el modelo, de forma (samples, num_inputs, num_classes).
+    image_names : list of str
+        Lista con los nombres de las imágenes asociadas a cada entrada.
+    y_test : ndarray
+        Etiquetas verdaderas del conjunto de datos.
+    y_pred : ndarray
+        Etiquetas predichas por el modelo.
+    output_dir : str
+        Directorio donde se guardará el archivo CSV con los resultados.
+    uncertainty_type : str, opcional
+        Tipo de incertidumbre que se calculará ("predictive", "aleatoric" o "epistemic").
+    correct_factor : float, opcional
+        Factor para ponderar la incertidumbre cuando la predicción es correcta (default: 0.8).
+    incorrect_factor : float, opcional
+        Factor para ponderar la incertidumbre cuando la predicción es incorrecta (default: 1.2).
+
+    Returns
+    -------
+    uncertainties : ndarray
+        Vector con la incertidumbre ponderada de cada entrada (longitud igual al número de entradas).
+    """
+    # Calcular las métricas de incertidumbre
+    model_H = _predictive_entropy(predictions)  # Entropía predictiva
+    model_Ep = _expected_entropy(predictions)   # Entropía esperada (aleatoria)
+    model_H_Ep = model_H - model_Ep             # Incertidumbre epistémica
+
+    # Seleccionar el tipo de incertidumbre
+    if uncertainty_type == "predictive":
+        uncertainties = model_H
+    elif uncertainty_type == "aleatoric":
+        uncertainties = model_Ep
+    elif uncertainty_type == "epistemic":
+        uncertainties = model_H_Ep
+    else:
+        raise ValueError("El tipo de incertidumbre debe ser 'predictive', 'aleatoric' o 'epistemic'")
+
+    # Ponderar la incertidumbre en función de si la predicción es correcta o no
+    uncertainties_weighted = []
+    for uncertainty, true_label, pred_label in zip(uncertainties, y_test, y_pred):
+        if pred_label == true_label:  # Predicción correcta
+            weighted_uncertainty = uncertainty * correct_factor
+        else:  # Predicción incorrecta
+            weighted_uncertainty = uncertainty * incorrect_factor
+        uncertainties_weighted.append(weighted_uncertainty)
+
+    # Crear el directorio de salida si no existe
+    os.makedirs(output_dir, exist_ok=True)
+    csv_file = os.path.join(output_dir, f"image_uncertainties_{uncertainty_type}_weighted.csv")
+
+    # Guardar los resultados en un archivo CSV
+    with open(csv_file, mode='w', newline='') as file:
+        writer = csv.writer(file, delimiter=';')
+        writer.writerow(["Image Name", "Uncertainty"])  # Encabezados
+        for image_name, true_label, pred_label, uncertainty in zip(image_names, y_test, y_pred, uncertainties_weighted):
+            writer.writerow([image_name, uncertainty])
+
+    print(f"Incertidumbres ponderadas guardadas en {csv_file}")
+    return np.array(uncertainties_weighted)
+
+
+
 def calculate_uncertainty_for_inputs(predictions, image_names, output_dir, uncertainty_type="predictive"):
     """
     Calcula la incertidumbre para cada entrada de un conjunto de datos y la guarda en un archivo CSV.
