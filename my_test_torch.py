@@ -31,6 +31,7 @@ from tensorflow.keras.utils import to_categorical
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import time
 
 # Local imports
 if '.' in __name__:
@@ -105,11 +106,15 @@ def predict(model, X_test, y_test, num_classes, samples=100, verbose=False, imag
         print(f"Unique classes in y_test: {np.unique(y_test)}")
 
     print(f"\nLanzando {samples} predicciones bayesianas")
+    start_time = time.time() 
     predictions = bayesian_predictions_torch(model, X_test, samples=samples)
+    end_time = time.time()
+    elapsed_time_ms = (end_time - start_time) * 1000
+    print(f"Tiempo tomado para lanzar {samples} predicciones bayesianas: {elapsed_time_ms:.2f} ms")
     y_pred_mean = np.mean(predictions, axis=0).argmax(axis=1)
 
     if images_names is not None:
-        calculate_uncertainty_for_inputs(predictions, images_names, './Test/')
+        #calculate_uncertainty_for_inputs(predictions, images_names, './Test/')
         calculate_uncertainty_with_labels(predictions, images_names, y_test, y_pred_mean,'./Test/')
 
     if verbose:
